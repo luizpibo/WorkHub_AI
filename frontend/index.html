@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WorkHub AI Sales - Chat</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🤖 WorkHub AI Sales</h1>
+            <div class="header-info">
+                <span id="statusIndicator" class="status-indicator">●</span>
+                <span id="statusText">Conectado</span>
+            </div>
+        </div>
+        
+        <div class="chat-config">
+            <div class="config-row">
+                <div class="config-field">
+                    <label for="userKeyInput">User Key:</label>
+                    <input type="text" id="userKeyInput" placeholder="Digite seu user_key" value="test_user_frontend">
+                </div>
+                <div class="config-field">
+                    <label for="userNameInput">Nome (opcional):</label>
+                    <input type="text" id="userNameInput" placeholder="Digite seu nome (ex: ADMIN User)" value="">
+                </div>
+            </div>
+            <button id="clearChatBtn" class="btn-secondary">Limpar Chat</button>
+        </div>
+        
+        <div class="chat-messages" id="messages">
+            <div class="message system">
+                <div class="message-content">
+                    <p>Bem-vindo ao WorkHub AI Sales! 👋</p>
+                    <p>Como posso ajudá-lo hoje?</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-input-container">
+            <div id="typingIndicator" class="typing-indicator" style="display: none;">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <div class="chat-input">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    placeholder="Digite sua mensagem..." 
+                    autocomplete="off"
+                >
+                <button id="sendButton" class="btn-primary">Enviar</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Markdown libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    
+    <script src="/static/app.js"></script>
+</body>
+</html>
+

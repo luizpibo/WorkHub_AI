@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: workhub_db
+    environment:
+      # ⚠️ ALTERE EM PRODUÇÃO: Use senhas fortes e variáveis de ambiente
+      POSTGRES_USER: workhub
+      POSTGRES_PASSWORD: workhub123
+      POSTGRES_DB: workhub_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workhub -d workhub_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: workhub_app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      # ⚠️ ALTERE EM PRODUÇÃO: Use credenciais seguras
+      - DATABASE_URL=postgresql+asyncpg://workhub:workhub123@db:5432/workhub_db
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GOOGLE_MODEL=${GOOGLE_MODEL:-gemini-2.5-flash}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - APP_ENV=development
+      - LOG_LEVEL=INFO
+      - AUTO_SEED=${AUTO_SEED:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+
