@@ -1,7 +1,7 @@
 """Plan model"""
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Numeric, Boolean, DateTime, Enum as SQLEnum, Text
+from sqlalchemy import Column, String, Numeric, Boolean, DateTime, Enum as SQLEnum, Text, ForeignKey, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import enum
@@ -16,12 +16,13 @@ class BillingCycle(str, enum.Enum):
 
 
 class Plan(Base):
-    """Plan model representing coworking plans"""
+    """Plan model representing products/plans (tenant-specific)"""
     __tablename__ = "plans"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)  # Nullable for migration
     name = Column(String, nullable=False)
-    slug = Column(String, unique=True, nullable=False, index=True)
+    slug = Column(String, nullable=False, index=True)  # No longer globally unique
     price = Column(Numeric(10, 2), nullable=False)
     billing_cycle = Column(SQLEnum(BillingCycle), nullable=False)
     features = Column(JSONB, nullable=False, default=list)
@@ -31,8 +32,15 @@ class Plan(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
+    tenant = relationship("Tenant", back_populates="plans")
     conversations = relationship("Conversation", back_populates="interested_plan")
     leads = relationship("Lead", back_populates="preferred_plan")
+
+    # Constraints
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'slug', name='uq_tenant_plan_slug'),
+        Index('idx_plan_tenant_active', 'tenant_id', 'is_active'),
+    )
 
     def __repr__(self):
         return f"<Plan {self.name} - R${self.price}/{self.billing_cycle.value}>"

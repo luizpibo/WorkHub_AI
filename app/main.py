@@ -7,8 +7,11 @@ from pathlib import Path
 from app.core.config import settings
 from app.utils.logger import logger
 
+# Import middleware
+from app.middleware import TenantMiddleware
+
 # Import routers
-from app.api.v1 import chat, analytics, users, plans
+from app.api.v1 import chat, analytics, users, plans, tenants
 
 # Create FastAPI app
 app = FastAPI(
@@ -27,6 +30,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add Tenant Middleware (after CORS)
+app.add_middleware(TenantMiddleware)
 
 
 @app.on_event("startup")
@@ -94,6 +100,7 @@ app.include_router(chat.router, prefix=settings.API_V1_PREFIX, tags=["chat"])
 app.include_router(analytics.router, prefix=settings.API_V1_PREFIX, tags=["analytics"])
 app.include_router(users.router, prefix=settings.API_V1_PREFIX, tags=["users"])
 app.include_router(plans.router, prefix=settings.API_V1_PREFIX, tags=["plans"])
+app.include_router(tenants.router, prefix=settings.API_V1_PREFIX, tags=["tenants"])
 
 # Serve static files for frontend
 frontend_path = Path(__file__).parent.parent / "frontend"

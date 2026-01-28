@@ -34,19 +34,6 @@ def is_admin_user(user: Optional[User]) -> bool:
     return False
 
 
-def check_admin_access(user: Optional[User]) -> bool:
-    """
-    Validate admin access for a user
-    
-    Args:
-        user: User object to validate
-    
-    Returns:
-        True if user has admin access, False otherwise
-    """
-    return is_admin_user(user)
-
-
 def require_admin(user: Optional[User]) -> None:
     """
     Raise exception if user is not admin

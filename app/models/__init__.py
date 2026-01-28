@@ -5,6 +5,7 @@ from app.models.conversation import Conversation, ConversationStatus, FunnelStag
 from app.models.message import Message, MessageRole
 from app.models.lead import Lead, LeadStage
 from app.models.analysis import AnalysisReport, AnalysisType
+from app.models.tenant import Tenant, TenantStatus, PromptTemplate, PromptType, KnowledgeDocument, DocumentType
 
 __all__ = [
     "User",
@@ -20,4 +21,10 @@ __all__ = [
     "LeadStage",
     "AnalysisReport",
     "AnalysisType",
+    "Tenant",
+    "TenantStatus",
+    "PromptTemplate",
+    "PromptType",
+    "KnowledgeDocument",
+    "DocumentType",
 ]

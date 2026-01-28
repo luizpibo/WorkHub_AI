@@ -3,7 +3,7 @@ from typing import Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.analyst_agent import create_analyst_agent
+from app.agents.analyst_agent import AnalystAgent
 from app.models.user import User
 from app.utils.logger import logger
 
@@ -14,7 +14,7 @@ class AnalystService:
     def __init__(self, db: AsyncSession, user: Optional[User] = None):
         self.db = db
         self.user = user
-        self.analyst_agent = create_analyst_agent(db, user)
+        self.analyst_agent = AnalystAgent(db, user)
     
     async def analyze_conversation(self, conversation_id: str) -> dict:
         """
@@ -56,7 +56,4 @@ class AnalystService:
             raise
 
 
-async def create_analyst_service(db: AsyncSession, user: Optional[User] = None) -> AnalystService:
-    """Factory function to create analyst service"""
-    return AnalystService(db, user)
 

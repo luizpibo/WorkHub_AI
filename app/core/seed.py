@@ -69,6 +69,18 @@ async def check_if_seeded() -> bool:
 async def seed_plans(session: AsyncSession):
     """Seed initial plans"""
     from sqlalchemy import select
+    from app.models.tenant import Tenant
+    from app.core.config import settings
+    
+    # Get default tenant (workhub)
+    result = await session.execute(
+        select(Tenant).where(Tenant.slug == settings.DEFAULT_TENANT_SLUG)
+    )
+    default_tenant = result.scalar_one_or_none()
+    
+    if not default_tenant:
+        logger.error(f"Default tenant '{settings.DEFAULT_TENANT_SLUG}' not found. Cannot seed plans.")
+        raise ValueError(f"Default tenant '{settings.DEFAULT_TENANT_SLUG}' not found")
     
     plans_data = [
         {
@@ -129,9 +141,15 @@ async def seed_plans(session: AsyncSession):
 
     created_count = 0
     for plan_data in plans_data:
-        # Verificar se o plano já existe
+        # Add tenant_id to plan data
+        plan_data["tenant_id"] = default_tenant.id
+        
+        # Verificar se o plano já existe (verificar por tenant_id + slug)
         result = await session.execute(
-            select(Plan).where(Plan.slug == plan_data["slug"])
+            select(Plan).where(
+                Plan.tenant_id == default_tenant.id,
+                Plan.slug == plan_data["slug"]
+            )
         )
         existing_plan = result.scalar_one_or_none()
         
@@ -140,7 +158,7 @@ async def seed_plans(session: AsyncSession):
             session.add(plan)
             created_count += 1
         else:
-            logger.debug(f"Plan {plan_data['slug']} already exists, skipping")
+            logger.debug(f"Plan {plan_data['slug']} already exists for tenant {default_tenant.slug}, skipping")
     
     if created_count > 0:
         await session.commit()

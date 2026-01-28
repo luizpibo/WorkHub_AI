@@ -113,10 +113,25 @@ COMMON_OBJECTIONS = [
 
 async def seed_analytics_data(session: AsyncSession):
     """Cria dados de teste para analytics"""
+    from app.models.tenant import Tenant
+    from app.core.config import settings
+    
     logger.info("Starting analytics seed...")
     
-    # Buscar planos existentes
-    result = await session.execute(select(Plan))
+    # Get default tenant (workhub)
+    result = await session.execute(
+        select(Tenant).where(Tenant.slug == settings.DEFAULT_TENANT_SLUG)
+    )
+    default_tenant = result.scalar_one_or_none()
+    
+    if not default_tenant:
+        logger.error(f"Default tenant '{settings.DEFAULT_TENANT_SLUG}' not found. Cannot seed analytics data.")
+        raise ValueError(f"Default tenant '{settings.DEFAULT_TENANT_SLUG}' not found")
+    
+    # Buscar planos existentes (filtrar por tenant_id)
+    result = await session.execute(
+        select(Plan).where(Plan.tenant_id == default_tenant.id)
+    )
     plans = result.scalars().all()
     
     # Se não houver planos, criar os básicos
@@ -154,13 +169,16 @@ async def seed_analytics_data(session: AsyncSession):
         ]
         
         for plan_data in plans_data:
+            plan_data["tenant_id"] = default_tenant.id
             plan = Plan(**plan_data)
             session.add(plan)
         
         await session.flush()
         
-        # Buscar novamente
-        result = await session.execute(select(Plan))
+        # Buscar novamente (filtrar por tenant_id)
+        result = await session.execute(
+            select(Plan).where(Plan.tenant_id == default_tenant.id)
+        )
         plans = result.scalars().all()
         logger.info(f"Created {len(plans)} plans")
     
@@ -184,7 +202,8 @@ async def seed_analytics_data(session: AsyncSession):
             email=f"user{i+1}@example.com",
             phone=f"+5511999{i+1:05d}",
             work_type=work_type,
-            company=f"Company {i+1}" if work_type == WorkType.COMPANY else None
+            company=f"Company {i+1}" if work_type == WorkType.COMPANY else None,
+            tenant_id=default_tenant.id
         )
         session.add(user)
         await session.flush()
@@ -230,6 +249,7 @@ async def seed_analytics_data(session: AsyncSession):
         # Criar conversa
         conversation = Conversation(
             user_id=user.id,
+            tenant_id=default_tenant.id,
             status=status,
             funnel_stage=funnel_stage,
             interested_plan_id=interested_plan.id if interested_plan else None,
@@ -249,6 +269,7 @@ async def seed_analytics_data(session: AsyncSession):
             # Mensagem do usuário
             user_msg = Message(
                 conversation_id=conversation.id,
+                tenant_id=default_tenant.id,
                 role=MessageRole.USER,
                 content=choice(user_messages) if msg_idx == 0 else f"Mensagem {msg_idx + 1} do usuário sobre o plano",
                 created_at=conversation.created_at + timedelta(minutes=msg_idx * 5)
@@ -259,6 +280,7 @@ async def seed_analytics_data(session: AsyncSession):
             # Resposta do agente
             agent_msg = Message(
                 conversation_id=conversation.id,
+                tenant_id=default_tenant.id,
                 role=MessageRole.ASSISTANT,
                 content=choice(agent_responses) if msg_idx == 0 else f"Resposta {msg_idx + 1} do agente explicando os benefícios",
                 created_at=conversation.created_at + timedelta(minutes=msg_idx * 5 + 2)
@@ -294,6 +316,7 @@ async def seed_analytics_data(session: AsyncSession):
             lead = Lead(
                 conversation_id=conversation.id,
                 user_id=user.id,
+                tenant_id=default_tenant.id,
                 stage=lead_stage,
                 score=score,
                 objections=objections,

@@ -10,7 +10,7 @@ from app.agents.base import get_llm
 from app.tools import create_analyst_tools
 from app.models.user import User
 from app.services.auth_service import require_admin
-from app.services.prompt_service import prompt_service
+from app.services.prompt_service import PromptService
 from app.utils.logger import logger
 
 
@@ -33,6 +33,7 @@ class AnalystAgent:
         Returns:
             ChatPromptTemplate
         """
+        prompt_service = PromptService()
         system_prompt = prompt_service.get_analyst_prompt()
         
         prompt = ChatPromptTemplate.from_messages([
@@ -229,19 +230,4 @@ Retorne a análise em formato estruturado.
             return {"error": str(e)}
 
 
-def create_analyst_agent(db: AsyncSession, user: Optional[User] = None) -> AnalystAgent:
-    """
-    Factory function to create analyst agent
-    
-    Args:
-        db: Database session
-        user: User making the request (for admin check)
-    
-    Returns:
-        AnalystAgent instance
-    
-    Raises:
-        PermissionError: If user is not admin
-    """
-    return AnalystAgent(db, user)
 

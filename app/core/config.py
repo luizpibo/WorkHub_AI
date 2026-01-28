@@ -25,7 +25,12 @@ class Settings(BaseSettings):
     
     # Security
     API_KEY_HEADER: str = "X-API-Key"
-    
+
+    # Multi-Tenant
+    MULTI_TENANT_ENABLED: bool = False  # Feature flag for multi-tenant mode
+    TENANT_ID_HEADER: str = "X-Tenant-ID"  # Header for tenant identification
+    DEFAULT_TENANT_SLUG: str = "workhub"  # Default tenant when multi-tenant is disabled
+
     # Admin
     ADMIN_KEYWORDS: list = ["admin", "ADMIN", "administrador", "Administrador"]
     

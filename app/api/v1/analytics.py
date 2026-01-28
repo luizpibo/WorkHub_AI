@@ -6,7 +6,7 @@ from typing import Optional
 
 from app.api.deps import get_db
 from app.schemas.analytics import AnalyzeRequest, FunnelMetrics, PlanPerformanceResponse
-from app.services.analyst_service import create_analyst_service
+from app.agents.analyst_agent import AnalystAgent
 from app.tools.analytics_tools import get_funnel_metrics, get_plan_performance
 from app.models.user import User
 from app.services.auth_service import is_admin_user
@@ -40,9 +40,9 @@ async def analyze_conversation(
         if not is_admin_user(user):
             raise HTTPException(status_code=403, detail="Access denied. Admin privileges required.")
         
-        analyst_service = await create_analyst_service(db, user)
+        analyst_agent = AnalystAgent(db, user)
         
-        result = await analyst_service.analyze_conversation(
+        result = await analyst_agent.analyze_conversation(
             conversation_id=str(request.conversation_id)
         )
         
@@ -88,8 +88,8 @@ async def get_funnel_analytics(
         metrics = await get_funnel_metrics(db, start_date, end_date, user)
         
         # Get AI analysis
-        analyst_service = await create_analyst_service(db, user)
-        analysis = await analyst_service.get_funnel_metrics(start_date, end_date)
+        analyst_agent = AnalystAgent(db, user)
+        analysis = await analyst_agent.get_funnel_analysis(start_date, end_date)
         
         return {
             "metrics": metrics,

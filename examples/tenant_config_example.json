@@ -1,0 +1,119 @@
+{
+  "slug": "techspace",
+  "name": "TechSpace Coworking",
+  "status": "active",
+  "config": {
+    "business_type": "coworking",
+    "currency": "USD",
+    "features": {
+      "enable_handoff": true,
+      "enable_analytics": true,
+      "max_users": 5000
+    },
+    "funnel_config": {
+      "stages": [
+        {"key": "awareness", "name": "Awareness"},
+        {"key": "interest", "name": "Interest"},
+        {"key": "trial", "name": "Trial Signup"},
+        {"key": "membership", "name": "Membership"},
+        {"key": "retained", "name": "Retained"}
+      ]
+    },
+    "llm": {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "temperature": 0.7
+    }
+  },
+  "plans": [
+    {
+      "name": "Day Pass",
+      "slug": "day-pass",
+      "price": 25.00,
+      "billing_cycle": "daily",
+      "features": [
+        "Access to shared workspace",
+        "High-speed WiFi",
+        "Free coffee",
+        "Meeting room (1 hour/day)"
+      ],
+      "description": "Perfect for occasional visitors who need a professional workspace",
+      "is_active": true
+    },
+    {
+      "name": "Hot Desk",
+      "slug": "hot-desk",
+      "price": 199.00,
+      "billing_cycle": "monthly",
+      "features": [
+        "24/7 access",
+        "High-speed WiFi",
+        "Unlimited coffee",
+        "Meeting room (5 hours/month)",
+        "Printing credits",
+        "Community events"
+      ],
+      "description": "Flexible monthly membership with access to any available desk",
+      "is_active": true
+    },
+    {
+      "name": "Dedicated Desk",
+      "slug": "dedicated-desk",
+      "price": 399.00,
+      "billing_cycle": "monthly",
+      "features": [
+        "24/7 access",
+        "Your own dedicated desk",
+        "Lockable storage unit",
+        "High-speed WiFi",
+        "Unlimited coffee",
+        "Meeting room (10 hours/month)",
+        "Printing credits",
+        "Community events",
+        "Mail handling"
+      ],
+      "description": "Your personal workspace with a dedicated desk and storage",
+      "is_active": true
+    },
+    {
+      "name": "Private Office",
+      "slug": "private-office",
+      "price": 899.00,
+      "billing_cycle": "monthly",
+      "features": [
+        "24/7 access",
+        "Private lockable office",
+        "Custom furniture setup",
+        "High-speed WiFi",
+        "Unlimited coffee",
+        "Meeting room (20 hours/month)",
+        "Unlimited printing",
+        "Community events",
+        "Mail handling",
+        "Company signage"
+      ],
+      "description": "Professional private office for teams up to 4 people",
+      "is_active": true
+    }
+  ],
+  "prompts": {
+    "sales_agent": "You are a Sales Consultant for {tenant_name}, a coworking space.\n\nYour goal is to understand the visitor's needs and recommend the best membership plan.\n\nKNOWLEDGE BASE:\n{product_knowledge}\n\nAVAILABLE PLANS:\n{available_products}\n\nCURRENT CONTEXT:\n- User: {user_name}\n- Work Type: {work_type}\n- Funnel Stage: {funnel_stage}\n- Summary: {conversation_summary}\n\nBe friendly, professional, and helpful. Ask relevant questions to understand their needs.",
+    "admin_agent": "You are an Admin Assistant for {tenant_name}.\n\nYou have access to analytics, reports, and system management tools.\n\nHelp administrators understand their sales funnel, conversion rates, and business metrics.\n\nProvide clear, data-driven insights."
+  },
+  "knowledge_documents": [
+    {
+      "title": "Product Knowledge Base",
+      "slug": "product-knowledge",
+      "content": "# TechSpace Coworking\n\nTechSpace is a modern coworking space designed for tech professionals, startups, and remote workers.\n\n## Location\n- Downtown area with easy access to public transport\n- Near restaurants, cafes, and shops\n- Secure building with 24/7 access\n\n## Amenities\n- Ultra-fast gigabit internet (fiber optic)\n- Ergonomic Herman Miller chairs\n- Standing desks available\n- Phone booths for private calls\n- Zoom rooms for video conferences\n- Kitchen with espresso machine\n- Lounge area with games\n- Weekly community events\n- Rooftop terrace\n\n## Typical Members\n- Software developers\n- Digital marketers\n- Designers and creatives\n- Startup founders\n- Remote workers\n- Freelancers\n\n## Why Choose TechSpace?\n1. Tech-focused community\n2. High-speed infrastructure\n3. Flexible membership options\n4. Prime location\n5. Active community events",
+      "document_type": "product",
+      "is_active": true
+    },
+    {
+      "title": "Common Objections",
+      "slug": "objections",
+      "content": "# Handling Common Objections\n\n## \"It's too expensive\"\n- Compare to cost of coffee shops + home office setup\n- Emphasize productivity gains and networking value\n- Mention day pass option to try first\n- Flexible contracts (month-to-month)\n\n## \"I work from home just fine\"\n- Discuss separation of work/life balance\n- Professional meeting space for clients\n- Networking opportunities\n- Improved focus and productivity\n- Community and social interaction\n\n## \"I don't need a full-time space\"\n- Day pass and hot desk options\n- Flexible scheduling\n- Only pay for what you use\n\n## \"What if I need to cancel?\"\n- Month-to-month contracts\n- No long-term commitments\n- Easy cancellation process\n- Can downgrade plans anytime",
+      "document_type": "objections",
+      "is_active": true
+    }
+  ]
+}

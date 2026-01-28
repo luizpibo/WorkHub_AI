@@ -1,5 +1,6 @@
 """Admin Agent implementation"""
 from typing import List, Dict, Any, Optional
+from uuid import UUID
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.exceptions import OutputParserException
@@ -9,49 +10,80 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.base import get_llm
 from app.tools import create_admin_tools
+from app.tools.tenant_tools import TenantToolRegistry
 from app.models.user import User
-from app.services.prompt_service import prompt_service
+from app.services.prompt_service import PromptService
+from app.services.tenant_prompt_service import tenant_prompt_service
 from app.services.auth_service import require_admin
 from app.utils.logger import logger
 
 
 class AdminAgent:
-    """Admin Agent for administrative tasks and analytics"""
-    
-    def __init__(self, db: AsyncSession, user: Optional[User] = None):
+    """Admin Agent for administrative tasks and analytics (supports multi-tenant)"""
+
+    def __init__(self, db: AsyncSession, user: Optional[User] = None, tenant_id: Optional[UUID] = None):
+        """
+        Initialize Admin Agent.
+
+        Args:
+            db: Database session
+            user: Admin user (for verification)
+            tenant_id: Optional tenant UUID for multi-tenant mode
+        """
         self.db = db
         self.user = user
+        self.tenant_id = tenant_id
+
         # Verify admin access
         require_admin(user)
+
         self.llm = get_llm(temperature=0.3)  # Lower temperature for more factual responses
-        self.tools = create_admin_tools(db, user)
+
+        # Use tenant-aware tools if tenant_id provided
+        if tenant_id:
+            logger.info(f"Creating AdminAgent with tenant_id: {tenant_id}")
+            self.tool_registry = TenantToolRegistry(db, tenant_id)
+            self.tools = None  # Will be created async
+        else:
+            logger.info("Creating AdminAgent in single-tenant mode")
+            self.tools = create_admin_tools(db, user)
+            self.tool_registry = None
+
         self.agent_executor = None
     
-    def _create_prompt(
+    async def _create_prompt(
         self,
         conversation_id: str = None,
     ) -> ChatPromptTemplate:
         """
-        Create prompt template for admin agent
-        
+        Create prompt template for admin agent.
+
         Args:
             conversation_id: Current conversation ID
-        
+
         Returns:
             ChatPromptTemplate
         """
-        # Get system prompt with injected variables
-        system_prompt = prompt_service.get_admin_prompt(
-            conversation_id=conversation_id,
-        )
-        
+        # Get system prompt based on mode
+        if self.tenant_id:
+            system_prompt = await tenant_prompt_service.get_admin_prompt(
+                db=self.db,
+                tenant_id=self.tenant_id,
+                conversation_id=conversation_id,
+            )
+        else:
+            prompt_service = PromptService()
+            system_prompt = prompt_service.get_admin_prompt(
+                conversation_id=conversation_id,
+            )
+
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             MessagesPlaceholder(variable_name="chat_history", optional=True),
             ("human", "{input}"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
-        
+
         return prompt
     
     async def invoke(
@@ -78,23 +110,29 @@ class AdminAgent:
             Agent response
         """
         try:
+            # Get tools (for tenant mode, create them here)
+            if self.tenant_id:
+                tools = await self.tool_registry.get_all_tools()
+            else:
+                tools = self.tools
+
             # Create prompt with current context
-            prompt = self._create_prompt(
+            prompt = await self._create_prompt(
                 conversation_id=conversation_id,
             )
-            
+
             # Create agent
             agent = create_openai_functions_agent(
                 llm=self.llm,
-                tools=self.tools,
+                tools=tools,
                 prompt=prompt,
             )
-            
+
             # Create executor with optimized configuration
             from app.core.config import settings
             agent_executor = AgentExecutor(
                 agent=agent,
-                tools=self.tools,
+                tools=tools,
                 verbose=settings.APP_ENV == "development",  # Verbose apenas em desenvolvimento
                 max_iterations=15,  # Aumentar limite de iterações
                 max_execution_time=120,  # Timeout de 2 minutos
@@ -162,20 +200,4 @@ class AdminAgent:
                 "error": str(e)
             }
 
-
-def create_admin_agent(db: AsyncSession, user: Optional[User] = None) -> AdminAgent:
-    """
-    Factory function to create admin agent
-    
-    Args:
-        db: Database session
-        user: User making the request (must be admin)
-    
-    Returns:
-        AdminAgent instance
-    
-    Raises:
-        PermissionError: If user is not admin
-    """
-    return AdminAgent(db, user)
 

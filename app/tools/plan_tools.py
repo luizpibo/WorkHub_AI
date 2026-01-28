@@ -6,8 +6,13 @@ from langchain.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from app.models.plan import Plan
-from app.services.knowledge_base import knowledge_base
+from app.core.knowledge import PLANS_SUMMARY, get_plan_comparison
 from app.utils.logger import logger
+
+
+class GetPlansInput(BaseModel):
+    """Input schema for get_available_plans / get_plans (no arguments)"""
+    pass
 
 
 class GetPlanDetailsInput(BaseModel):
@@ -50,7 +55,7 @@ async def get_available_plans(db: AsyncSession) -> dict:
         ]
         
         # Also return formatted summary
-        summary = knowledge_base.get_plans_summary()
+        summary = PLANS_SUMMARY
         
         return {
             "plans": plans_list,
@@ -127,7 +132,7 @@ async def compare_plans(plan_slugs: List[str], db: AsyncSession) -> dict:
                 })
         
         # Get comparison from knowledge base
-        comparison = knowledge_base.get_plan_comparison(plan_slugs)
+        comparison = get_plan_comparison(plan_slugs)
         
         return {
             "plans": plans_data,

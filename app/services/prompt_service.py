@@ -157,6 +157,4 @@ class PromptService:
         )
 
 
-# Singleton instance
-prompt_service = PromptService()
 

@@ -25,5 +25,8 @@ pytest-cov>=4.1.0
 httpx>=0.26.0
 faker>=22.0.0
 
+# Security (multi-tenant API key hashing)
+bcrypt>=4.0.0
+
 # Utils
 python-multipart>=0.0.6

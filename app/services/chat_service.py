@@ -8,17 +8,30 @@ from langchain_core.messages import HumanMessage, AIMessage
 from app.models.user import User
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
-from app.agents.sales_agent import create_sales_agent
-from app.agents.admin_agent import create_admin_agent
+from app.agents.sales_agent import SalesAgent
+from app.agents.admin_agent import AdminAgent
 from app.services.auth_service import is_admin_user
 from app.utils.logger import logger
 
 
 class ChatService:
-    """Service for managing chat conversations"""
+    """
+    Service for managing chat conversations.
     
-    def __init__(self, db: AsyncSession):
+    Supports both single-tenant (tenant_id=None) and multi-tenant modes.
+    When tenant_id is provided, all queries are filtered by tenant for isolation.
+    """
+    
+    def __init__(self, db: AsyncSession, tenant_id: Optional[UUID] = None):
+        """
+        Initialize ChatService.
+        
+        Args:
+            db: Database session
+            tenant_id: Optional tenant UUID for multi-tenant mode (None = single-tenant)
+        """
         self.db = db
+        self.tenant_id = tenant_id  # None = single-tenant mode
         # Don't create agents immediately - create them based on user type
         self._sales_agent = None
         self._admin_agent = None
@@ -36,55 +49,70 @@ class ChatService:
         is_admin = is_admin_user(user)
         user_name_display = user.name if user.name else "Sem nome"
         
-        logger.info(f"Selecting agent for user: {user.user_key} (name: '{user_name_display}')")
-        logger.info(f"Admin check result: {is_admin}")
+        tenant_log = f"[Tenant: {self.tenant_id}] " if self.tenant_id else ""
+        logger.info(f"{tenant_log}Selecting agent for user: {user.user_key} (name: '{user_name_display}')")
+        logger.info(f"{tenant_log}Admin check result: {is_admin}")
         
         if is_admin:
-            logger.info("Using AdminAgent for admin user")
+            logger.info(f"{tenant_log}Using AdminAgent for admin user")
             if self._admin_agent is None:
-                self._admin_agent = create_admin_agent(self.db, user)
+                self._admin_agent = AdminAgent(self.db, user, tenant_id=self.tenant_id)
             return self._admin_agent
         else:
-            logger.info("Using SalesAgent for regular user")
+            logger.info(f"{tenant_log}Using SalesAgent for regular user")
             if self._sales_agent is None:
-                self._sales_agent = create_sales_agent(self.db)
+                self._sales_agent = SalesAgent(self.db, tenant_id=self.tenant_id)
             return self._sales_agent
     
     async def get_or_create_user(self, user_key: str, user_name: Optional[str] = None) -> User:
         """
-        Get existing user or create new one
-        Also tries to find user by name if user_key not found and name is provided
+        Get existing user or create new one.
+        Also tries to find user by name if user_key not found and name is provided.
+        
+        When tenant_id is set, filters by tenant for isolation.
         """
-        # First try by user_key
-        result = await self.db.execute(
-            select(User).where(User.user_key == user_key)
-        )
+        # Build query with tenant filter if provided
+        query = select(User).where(User.user_key == user_key)
+        if self.tenant_id is not None:
+            query = query.where(User.tenant_id == self.tenant_id)
+        
+        result = await self.db.execute(query)
         user = result.scalar_one_or_none()
         
         # If not found and name provided, try to find by name
         if not user and user_name:
-            logger.info(f"User not found by key {user_key}, searching by name: {user_name}")
-            result = await self.db.execute(
-                select(User).where(User.name.ilike(f"%{user_name}%"))
-            )
+            tenant_log = f"[Tenant: {self.tenant_id}] " if self.tenant_id else ""
+            logger.info(f"{tenant_log}User not found by key {user_key}, searching by name: {user_name}")
+            
+            name_query = select(User).where(User.name.ilike(f"%{user_name}%"))
+            if self.tenant_id is not None:
+                name_query = name_query.where(User.tenant_id == self.tenant_id)
+            
+            result = await self.db.execute(name_query)
             users_by_name = result.scalars().all()
             
             # If found exactly one user with matching name, use it
             if len(users_by_name) == 1:
                 user = users_by_name[0]
-                logger.info(f"Found existing user by name: {user.user_key} ({user.name})")
+                logger.info(f"{tenant_log}Found existing user by name: {user.user_key} ({user.name})")
             elif len(users_by_name) > 1:
                 # Multiple users with similar name - use the most recent one
                 user = max(users_by_name, key=lambda u: u.created_at)
-                logger.info(f"Multiple users found by name, using most recent: {user.user_key} ({user.name})")
+                logger.info(f"{tenant_log}Multiple users found by name, using most recent: {user.user_key} ({user.name})")
         
         # If still not found, create new user
         if not user:
-            user = User(user_key=user_key, name=user_name)
+            user_kwargs = {"user_key": user_key, "name": user_name}
+            if self.tenant_id is not None:
+                user_kwargs["tenant_id"] = self.tenant_id
+            
+            user = User(**user_kwargs)
             self.db.add(user)
             await self.db.commit()
             await self.db.refresh(user)
-            logger.info(f"Created new user: {user_key} (name: {user_name})")
+            
+            tenant_log = f"[Tenant: {self.tenant_id}] " if self.tenant_id else ""
+            logger.info(f"{tenant_log}Created new user: {user_key} (name: {user_name})")
         else:
             # Always update name if provided (even if same, to ensure sync)
             if user_name is not None:
@@ -92,10 +120,12 @@ class ChatService:
                 user.name = user_name
                 await self.db.commit()
                 await self.db.refresh(user)
+                
+                tenant_log = f"[Tenant: {self.tenant_id}] " if self.tenant_id else ""
                 if old_name != user_name:
-                    logger.info(f"Updated user name: {user_key} - '{old_name}' -> '{user_name}'")
+                    logger.info(f"{tenant_log}Updated user name: {user_key} - '{old_name}' -> '{user_name}'")
                 else:
-                    logger.debug(f"User name confirmed: {user_key} - '{user_name}'")
+                    logger.debug(f"{tenant_log}User name confirmed: {user_key} - '{user_name}'")
         
         # Always refresh to ensure we have latest data
         await self.db.refresh(user)
@@ -107,32 +137,49 @@ class ChatService:
         user_id: UUID,
         conversation_id: Optional[UUID] = None
     ) -> Conversation:
-        """Get existing conversation or create new one"""
+        """
+        Get existing conversation or create new one.
+        
+        When tenant_id is set, filters by tenant for isolation.
+        """
         if conversation_id:
-            result = await self.db.execute(
-                select(Conversation).where(Conversation.id == conversation_id)
-            )
+            query = select(Conversation).where(Conversation.id == conversation_id)
+            if self.tenant_id is not None:
+                query = query.where(Conversation.tenant_id == self.tenant_id)
+            
+            result = await self.db.execute(query)
             conversation = result.scalar_one_or_none()
             
             if conversation:
                 return conversation
         
         # Create new conversation
-        conversation = Conversation(user_id=user_id)
+        conv_kwargs = {"user_id": user_id}
+        if self.tenant_id is not None:
+            conv_kwargs["tenant_id"] = self.tenant_id
+        
+        conversation = Conversation(**conv_kwargs)
         self.db.add(conversation)
         await self.db.commit()
         await self.db.refresh(conversation)
-        logger.info(f"Created new conversation: {conversation.id}")
+        
+        tenant_log = f"[Tenant: {self.tenant_id}] " if self.tenant_id else ""
+        logger.info(f"{tenant_log}Created new conversation: {conversation.id}")
         
         return conversation
     
     async def get_chat_history(self, conversation_id: UUID, limit: int = 10):
-        """Get recent chat history in LangChain format"""
+        """
+        Get recent chat history in LangChain format.
+        
+        When tenant_id is set, filters by tenant for isolation.
+        """
+        query = select(Message).where(Message.conversation_id == conversation_id)
+        if self.tenant_id is not None:
+            query = query.where(Message.tenant_id == self.tenant_id)
+        
         result = await self.db.execute(
-            select(Message)
-            .where(Message.conversation_id == conversation_id)
-            .order_by(Message.created_at.desc())
-            .limit(limit)
+            query.order_by(Message.created_at.desc()).limit(limit)
         )
         messages = list(reversed(result.scalars().all()))
         
@@ -244,12 +291,16 @@ class ChatService:
                     else:
                         serialized_tool_calls = str(tool_calls)
         
-        message = Message(
-            conversation_id=conversation_id,
-            role=role,
-            content=content,
-            tool_calls=serialized_tool_calls,
-        )
+        message_kwargs = {
+            "conversation_id": conversation_id,
+            "role": role,
+            "content": content,
+            "tool_calls": serialized_tool_calls,
+        }
+        if self.tenant_id is not None:
+            message_kwargs["tenant_id"] = self.tenant_id
+        
+        message = Message(**message_kwargs)
         self.db.add(message)
         await self.db.commit()
         await self.db.refresh(message)
@@ -379,9 +430,11 @@ class ChatService:
             )
             
             # Buscar conversation atualizada para obter status atualizado
-            result = await self.db.execute(
-                select(Conversation).where(Conversation.id == conversation_id_uuid)
-            )
+            query = select(Conversation).where(Conversation.id == conversation_id_uuid)
+            if self.tenant_id is not None:
+                query = query.where(Conversation.tenant_id == self.tenant_id)
+            
+            result = await self.db.execute(query)
             updated_conversation = result.scalar_one_or_none()
             
             return {
@@ -399,7 +452,4 @@ class ChatService:
             raise
 
 
-async def create_chat_service(db: AsyncSession) -> ChatService:
-    """Factory function to create chat service"""
-    return ChatService(db)
 

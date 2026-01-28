@@ -1,5 +1,6 @@
 """Sales Agent implementation"""
 from typing import List, Dict, Any, Optional
+from uuid import UUID
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.tools import BaseTool
@@ -10,21 +11,41 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.base import get_llm
 from app.tools import create_sales_tools
-from app.services.prompt_service import prompt_service
-from app.services.knowledge_base import knowledge_base
+from app.tools.tenant_tools import TenantToolRegistry
+from app.services.prompt_service import PromptService
+from app.services.tenant_prompt_service import tenant_prompt_service
+from app.core.knowledge import PLANS_SUMMARY
 from app.utils.logger import logger
 
 
 class SalesAgent:
-    """Sales Agent for coworking sales"""
-    
-    def __init__(self, db: AsyncSession):
+    """Sales Agent for coworking sales (supports multi-tenant)"""
+
+    def __init__(self, db: AsyncSession, tenant_id: Optional[UUID] = None):
+        """
+        Initialize Sales Agent.
+
+        Args:
+            db: Database session
+            tenant_id: Optional tenant UUID for multi-tenant mode
+        """
         self.db = db
+        self.tenant_id = tenant_id
         self.llm = get_llm(temperature=0.7)
-        self.tools = create_sales_tools(db)
+
+        # Use tenant-aware tools if tenant_id provided, else use legacy tools
+        if tenant_id:
+            logger.info(f"Creating SalesAgent with tenant_id: {tenant_id}")
+            self.tool_registry = TenantToolRegistry(db, tenant_id)
+            self.tools = None  # Will be created async in invoke
+        else:
+            logger.info("Creating SalesAgent in single-tenant mode")
+            self.tools = create_sales_tools(db)
+            self.tool_registry = None
+
         self.agent_executor = None
     
-    def _create_prompt(
+    async def _create_prompt(
         self,
         user_name: str = None,
         work_type: str = None,
@@ -33,37 +54,52 @@ class SalesAgent:
         conversation_id: str = None,
     ) -> ChatPromptTemplate:
         """
-        Create prompt template for sales agent
-        
+        Create prompt template for sales agent.
+
         Args:
             user_name: User's name
             work_type: Type of work
             conversation_summary: Conversation summary
             funnel_stage: Current funnel stage
-        
+            conversation_id: Conversation ID
+
         Returns:
             ChatPromptTemplate
         """
-        # Get available plans summary
-        plans_summary = knowledge_base.get_plans_summary()
-        
-        # Get system prompt with injected variables
-        system_prompt = prompt_service.get_sales_prompt(
-            user_name=user_name,
-            work_type=work_type,
-            conversation_summary=conversation_summary,
-            funnel_stage=funnel_stage,
-            available_plans=plans_summary,
-            conversation_id=conversation_id,
-        )
-        
+        # Get system prompt based on mode (tenant or legacy)
+        if self.tenant_id:
+            # Multi-tenant mode: use tenant-specific prompts
+            plans_summary = "Carregando planos..."  # TODO: Get from tenant plans
+            system_prompt = await tenant_prompt_service.get_sales_prompt(
+                db=self.db,
+                tenant_id=self.tenant_id,
+                user_name=user_name,
+                work_type=work_type,
+                conversation_summary=conversation_summary,
+                funnel_stage=funnel_stage,
+                available_plans=plans_summary,
+                conversation_id=conversation_id,
+            )
+        else:
+            # Single-tenant mode: use legacy prompts
+            plans_summary = PLANS_SUMMARY
+            prompt_service = PromptService()
+            system_prompt = prompt_service.get_sales_prompt(
+                user_name=user_name,
+                work_type=work_type,
+                conversation_summary=conversation_summary,
+                funnel_stage=funnel_stage,
+                available_plans=plans_summary,
+                conversation_id=conversation_id,
+            )
+
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             MessagesPlaceholder(variable_name="chat_history", optional=True),
             ("human", "{input}"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
-        
+
         return prompt
     
     async def invoke(
@@ -94,19 +130,25 @@ class SalesAgent:
             Agent response
         """
         try:
+            # Get tools (for tenant mode, create them here)
+            if self.tenant_id:
+                tools = await self.tool_registry.get_all_tools()
+            else:
+                tools = self.tools
+
             # Create prompt with current context
-            prompt = self._create_prompt(
+            prompt = await self._create_prompt(
                 user_name=user_name,
                 work_type=work_type,
                 conversation_summary=conversation_summary,
                 funnel_stage=funnel_stage,
                 conversation_id=conversation_id,
             )
-            
+
             # Create agent
             agent = create_openai_functions_agent(
                 llm=self.llm,
-                tools=self.tools,
+                tools=tools,
                 prompt=prompt,
             )
             
@@ -114,7 +156,7 @@ class SalesAgent:
             from app.core.config import settings
             agent_executor = AgentExecutor(
                 agent=agent,
-                tools=self.tools,
+                tools=tools,
                 verbose=settings.APP_ENV == "development",  # Verbose apenas em desenvolvimento
                 max_iterations=15,  # Aumentar limite de iterações
                 max_execution_time=120,  # Timeout de 2 minutos
@@ -175,16 +217,4 @@ class SalesAgent:
                 "error": str(e)
             }
 
-
-def create_sales_agent(db: AsyncSession) -> SalesAgent:
-    """
-    Factory function to create sales agent
-    
-    Args:
-        db: Database session
-    
-    Returns:
-        SalesAgent instance
-    """
-    return SalesAgent(db)
 
